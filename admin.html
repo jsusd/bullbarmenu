@@ -12,7 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <link rel="icon" type="image/png" href="https://assets.olaclick.app/companies/logos/46b22ae5-e7a7-48fb-89c7-b14f810a391b.png">
-  <link rel="stylesheet" href="admin.css?v=20261008_v6">
+  <link rel="stylesheet" href="admin.css?v=20261108_v8">
 </head>
 <body>
   <!-- SCRIPT DE DESBLOQUEO INMEDIATO Y SEGURIDAD ANTIFALLOS -->
@@ -156,6 +156,168 @@
         p.type = p.type === "password" ? "text" : "password";
       }
     };
+
+    window.closeBullBarProductModal = function(e) {
+      if (e) {
+        try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
+        try { if (e.stopPropagation) e.stopPropagation(); } catch(err) {}
+      }
+      var m = document.getElementById("productModal");
+      if (m) {
+        m.classList.remove("active");
+        m.style.setProperty("display", "none", "important");
+      }
+      if (window.adminState) window.adminState.currentEditingProduct = null;
+    };
+
+    window.closeBullBarCategoryModal = function(e) {
+      if (e) {
+        try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
+        try { if (e.stopPropagation) e.stopPropagation(); } catch(err) {}
+      }
+      var m = document.getElementById("categoryModal");
+      if (m) {
+        m.classList.remove("active");
+        m.style.setProperty("display", "none", "important");
+      }
+      if (window.adminState) window.adminState.currentEditingCategory = null;
+    };
+
+    window.closeBullBarOrderModal = function(e) {
+      if (e) {
+        try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
+        try { if (e.stopPropagation) e.stopPropagation(); } catch(err) {}
+      }
+      var m = document.getElementById("orderDetailModal");
+      if (m) {
+        m.classList.remove("active");
+        m.style.setProperty("display", "none", "important");
+      }
+    };
+
+    // Funciones globales para cambio de foto sin bloqueos de URL ni límite de memoria
+    window.compressImageDataUrl = function(file, callback) {
+      var reader = new FileReader();
+      reader.onload = function(event) {
+        var rawDataUrl = event.target.result;
+        var img = new Image();
+        img.onload = function() {
+          try {
+            var canvas = document.createElement("canvas");
+            var maxDim = 900;
+            var w = img.width;
+            var h = img.height;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+              } else {
+                w = Math.round((w * maxDim) / h);
+                h = maxDim;
+              }
+            }
+            canvas.width = w;
+            canvas.height = h;
+            var ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, w, h);
+            var compressed = canvas.toDataURL("image/jpeg", 0.82);
+            callback(compressed);
+          } catch (err) {
+            callback(rawDataUrl);
+          }
+        };
+        img.onerror = function() {
+          callback(rawDataUrl);
+        };
+        img.src = rawDataUrl;
+      };
+      reader.readAsDataURL(file);
+    };
+
+    window.handleBullBarImageFile = function(e) {
+      var input = e && e.target ? e.target : document.getElementById("prodFileInput");
+      if (!input || !input.files || !input.files[0]) return;
+      var file = input.files[0];
+      var preview = document.getElementById("prodPreviewImg");
+      var urlInput = document.getElementById("prodImageUrl");
+      var statusEl = document.getElementById("uploadStatusMsg");
+
+      if (statusEl) {
+        statusEl.style.display = "block";
+        statusEl.style.color = "#e5b972";
+        statusEl.textContent = "⏳ Procesando imagen...";
+      }
+
+      window.compressImageDataUrl(file, function(finalDataUrl) {
+        if (preview) {
+          preview.src = finalDataUrl;
+          preview.setAttribute("data-uploaded", "true");
+        }
+        if (urlInput) {
+          urlInput.value = "";
+        }
+        if (statusEl) {
+          statusEl.style.display = "block";
+          statusEl.style.color = "#25d366";
+          statusEl.textContent = "✅ Foto cargada desde tu dispositivo (" + file.name + "). Pulsa «Guardar Producto» para aplicar.";
+        }
+      });
+    };
+
+    window.handleBullBarImageUrl = function(e) {
+      var urlInput = e && e.target ? e.target : document.getElementById("prodImageUrl");
+      var preview = document.getElementById("prodPreviewImg");
+      var statusEl = document.getElementById("uploadStatusMsg");
+      if (!urlInput || !preview) return;
+
+      var val = urlInput.value.trim();
+      if (!val) {
+        if (statusEl) statusEl.style.display = "none";
+        return;
+      }
+
+      // Si el usuario pegó solo el ID de OlaClick o una URL válida
+      if (/^https?:\/\//i.test(val) || /^data:image\//i.test(val)) {
+        preview.src = val;
+        preview.removeAttribute("data-uploaded");
+        if (statusEl) {
+          statusEl.style.display = "block";
+          statusEl.style.color = "#25d366";
+          statusEl.textContent = "✅ Enlace de imagen listo. Pulsa «Guardar Producto» para aplicar.";
+        }
+      } else if (/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}(\.[a-z0-9]+)?$/i.test(val)) {
+        // Si pegaron un UUID de OlaClick sin el dominio completo, autocompletarlo o avisar
+        var fullOlaUrl = "https://assets.olaclick.app/companies/products/images/800/" + (val.indexOf(".") === -1 ? val + ".jpeg" : val);
+        preview.src = fullOlaUrl;
+        if (statusEl) {
+          statusEl.style.display = "block";
+          statusEl.style.color = "#e5b972";
+          statusEl.textContent = "💡 Si quieres subir un archivo de tu PC, usa el botón «Subir foto desde la PC» de arriba.";
+        }
+      } else {
+        if (statusEl) {
+          statusEl.style.display = "block";
+          statusEl.style.color = "#f59e0b";
+          statusEl.textContent = "⚠️ Para usar un enlace web debe empezar con https:// (o usa el botón «Subir foto desde la PC»).";
+        }
+      }
+    };
+
+    window.clearBullBarImageUrl = function() {
+      var urlInput = document.getElementById("prodImageUrl");
+      var fileInput = document.getElementById("prodFileInput");
+      var statusEl = document.getElementById("uploadStatusMsg");
+      if (urlInput) {
+        urlInput.value = "";
+        urlInput.focus();
+      }
+      if (fileInput) fileInput.value = "";
+      if (statusEl) {
+        statusEl.style.display = "block";
+        statusEl.style.color = "#94a89c";
+        statusEl.textContent = "Campo limpiado. Pega un nuevo enlace https:// o sube una foto desde tu PC.";
+      }
+    };
   </script>
 
   <!-- PANTALLA DE ACCESO Y AUTENTICACIÓN ADMINISTRATIVA -->
@@ -242,7 +404,7 @@
           <img src="https://assets.olaclick.app/companies/logos/46b22ae5-e7a7-48fb-89c7-b14f810a391b.png" alt="BullBar Logo">
         </div>
         <div>
-          <div class="sidebar-brand-title">BullBar</div>
+          <div class="sidebar-brand-title">BullBar <span style="font-size: 0.68rem; background: rgba(37, 211, 102, 0.18); color: #4ade80; border: 1px solid rgba(37, 211, 102, 0.4); padding: 2px 7px; border-radius: 99px; vertical-align: middle; margin-left: 4px;">v2.6</span></div>
           <div class="sidebar-brand-sub">Panel de Control</div>
         </div>
       </div>
@@ -285,9 +447,28 @@
           </svg>
           <span>Respaldar & Exportar</span>
         </div>
+
+        <a href="../reservas bullbar/index.html?mode=reception" class="nav-item" style="text-decoration: none; color: var(--accent-gold); display: flex; align-items: center; gap: 12px; margin-top: 8px; border: 1px dashed rgba(229, 185, 114, 0.4); border-radius: var(--radius-sm); padding: 10px 14px;">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+          <span style="font-weight: 700;">Reservas & Recepción ➔</span>
+        </a>
       </nav>
 
       <div class="sidebar-footer">
+        <a href="../reservas bullbar/index.html" target="_blank" class="btn-view-live" style="margin-bottom: 8px; border-color: rgba(229, 185, 114, 0.35); color: var(--accent-gold);">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+          <span>App de Reservas BullBar</span>
+        </a>
         <a href="index.html" target="_blank" class="btn-view-live">
           <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/>
@@ -316,6 +497,7 @@
             </svg>
           </button>
           <h1 id="topbarPageTitle" class="topbar-page-title">Productos del Menú</h1>
+          <span id="appVersionBadge" style="background: rgba(229, 185, 114, 0.16); color: #e5b972; border: 1px solid rgba(229, 185, 114, 0.45); padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; margin-left: 10px; letter-spacing: 0.03em;">Versión 2.6</span>
         </div>
 
         <div class="topbar-right">
@@ -414,20 +596,20 @@
           <!-- Barra de Filtros y Acción -->
           <div class="table-action-bar">
             <div class="table-filters-left">
-              <input type="text" id="searchProductInput" class="table-search-input" placeholder="Buscar por nombre, categoría o ingredientes...">
+              <input type="text" id="searchProductInput" class="table-search-input" placeholder="Buscar por nombre, categoría o ingredientes..." oninput="if (window.filterBullBarProductsDomFallback) window.filterBullBarProductsDomFallback(); else if (window.filterBullBarProducts) window.filterBullBarProducts();">
               
-              <select id="filterCategorySelect" class="table-filter-select">
+              <select id="filterCategorySelect" class="table-filter-select" onchange="if (window.filterBullBarProductsDomFallback) window.filterBullBarProductsDomFallback(); else if (window.filterBullBarProducts) window.filterBullBarProducts();">
                 <option value="all">Todas las categorías</option>
               </select>
 
-              <select id="filterStatusSelect" class="table-filter-select">
+              <select id="filterStatusSelect" class="table-filter-select" onchange="if (window.filterBullBarProductsDomFallback) window.filterBullBarProductsDomFallback(); else if (window.filterBullBarProducts) window.filterBullBarProducts();">
                 <option value="all">Todos los estados</option>
                 <option value="available">Solo Disponibles</option>
                 <option value="paused">Solo Agotados</option>
               </select>
             </div>
 
-            <button type="button" id="btnNewProduct" class="btn-primary">
+            <button type="button" id="btnNewProduct" class="btn-primary" onclick="if (window.openBullBarNewProductModal) window.openBullBarNewProductModal();">
               <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -884,11 +1066,11 @@
   </div>
 
   <!-- MODAL: AGREGAR / EDITAR PRODUCTO -->
-  <div id="productModal" class="admin-modal-overlay">
+  <div id="productModal" class="admin-modal-overlay" onclick="if (event.target === this) window.closeBullBarProductModal(event);">
     <div class="admin-modal-box">
       <div class="modal-head">
         <h3 id="productModalTitle">Agregar Nuevo Producto</h3>
-        <button type="button" id="closeProductModalBtn" class="btn-modal-close" title="Cerrar">
+        <button type="button" id="closeProductModalBtn" onclick="window.closeBullBarProductModal(event);" class="btn-modal-close" title="Cerrar">
           <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -896,7 +1078,7 @@
         </button>
       </div>
 
-      <form id="productForm">
+      <form id="productForm" novalidate onsubmit="if (window.saveBullBarProductForm) return window.saveBullBarProductForm(event);">
         <div class="modal-body">
           <div class="form-group-admin">
             <label for="prodName">Nombre del Producto / Trago *</label>
@@ -941,15 +1123,17 @@
                   <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
                   </svg>
-                  <span>Subir foto desde la PC</span>
-                  <input type="file" id="prodFileInput" accept="image/*" style="display: none;">
+                  <span>Subir foto desde la PC / Galería</span>
+                  <input type="file" id="prodFileInput" accept="image/*" style="display: none;" onchange="window.handleBullBarImageFile(event);">
                 </label>
                 <span style="color: var(--text-dim); font-size: 0.8rem;">ó</span>
               </div>
 
-              <div style="margin-top: 10px;">
-                <input type="url" id="prodImageUrl" class="admin-input" placeholder="O pega el enlace URL de la foto aquí">
+              <div style="margin-top: 10px; display: flex; gap: 6px; align-items: center;">
+                <input type="text" id="prodImageUrl" class="admin-input" placeholder="O pega el enlace https:// de la foto aquí" oninput="window.handleBullBarImageUrl(event);" style="flex: 1;">
+                <button type="button" onclick="window.clearBullBarImageUrl();" class="btn-secondary" title="Limpiar campo de enlace" style="padding: 10px 12px; border-radius: 8px; flex-shrink: 0;">✕</button>
               </div>
+              <div id="uploadStatusMsg" style="display: none; font-size: 0.78rem; margin-top: 8px; font-weight: 600;"></div>
             </div>
           </div>
 
@@ -966,20 +1150,23 @@
           </div>
         </div>
 
-        <div class="modal-foot">
-          <button type="button" id="btnCancelProduct" class="btn-secondary">Cancelar</button>
-          <button type="submit" class="btn-primary">Guardar Producto</button>
+        <div class="modal-foot" style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 0.72rem; color: #4ade80; font-weight: 700;">BullBar Admin v2.6</span>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" id="btnCancelProduct" onclick="window.closeBullBarProductModal(event);" class="btn-secondary">Cancelar</button>
+            <button type="submit" class="btn-primary">Guardar Producto</button>
+          </div>
         </div>
       </form>
     </div>
   </div>
 
   <!-- MODAL: AGREGAR / EDITAR CATEGORÍA -->
-  <div id="categoryModal" class="admin-modal-overlay">
+  <div id="categoryModal" class="admin-modal-overlay" onclick="if (event.target === this) window.closeBullBarCategoryModal(event);">
     <div class="admin-modal-box" style="max-width: 480px;">
       <div class="modal-head">
         <h3 id="categoryModalTitle">Agregar Nueva Categoría</h3>
-        <button type="button" id="closeCategoryModalBtn" class="btn-modal-close" title="Cerrar">
+        <button type="button" id="closeCategoryModalBtn" onclick="window.closeBullBarCategoryModal(event);" class="btn-modal-close" title="Cerrar">
           <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -1001,7 +1188,7 @@
         </div>
 
         <div class="modal-foot">
-          <button type="button" id="btnCancelCategory" class="btn-secondary">Cancelar</button>
+          <button type="button" id="btnCancelCategory" onclick="window.closeBullBarCategoryModal(event);" class="btn-secondary">Cancelar</button>
           <button type="submit" class="btn-primary">Guardar Categoría</button>
         </div>
       </form>
@@ -1009,14 +1196,14 @@
   </div>
 
   <!-- MODAL: DETALLE DE PEDIDO CONCRETADO -->
-  <div id="orderDetailModal" class="admin-modal-overlay">
+  <div id="orderDetailModal" class="admin-modal-overlay" onclick="if (event.target === this) window.closeBullBarOrderModal(event);">
     <div class="admin-modal-box" style="max-width: 580px;">
       <div class="modal-head">
         <div>
           <h3 id="orderModalTitle">Detalle del Pedido #BB-0000</h3>
           <span id="orderModalTime" style="font-size: 0.78rem; color: var(--text-muted);">Fecha y hora</span>
         </div>
-        <button type="button" id="closeOrderDetailModalBtn" class="btn-modal-close" title="Cerrar">
+        <button type="button" id="closeOrderDetailModalBtn" onclick="window.closeBullBarOrderModal(event);" class="btn-modal-close" title="Cerrar">
           <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -1029,7 +1216,7 @@
       </div>
 
       <div class="modal-foot">
-        <button type="button" id="btnCloseOrderModal" class="btn-secondary">Cerrar</button>
+        <button type="button" id="btnCloseOrderModal" onclick="window.closeBullBarOrderModal(event);" class="btn-secondary">Cerrar</button>
       </div>
     </div>
   </div>
@@ -1038,7 +1225,58 @@
   <div id="adminToastContainer" class="admin-toast-container"></div>
 
   <!-- Scripts -->
-  <script src="data.js?v=20261008_v5"></script>
-  <script src="admin.js?v=20261008_v6"></script>
+  <script src="data.js?v=20261108_v10"></script>
+  <script src="admin.js?v=20261108_v10"></script>
+  <script>
+    // Respaldo directo en admin.html v2.6 para garantizar que buscador y botones de cerrar funcionen incluso con caché de navegador
+    (function() {
+      function normalizeStr(s) {
+        return (s || "").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      }
+
+      // Función de filtrado directo en tabla (funciona tanto con el estado de admin.js como directamente sobre las filas DOM)
+      window.filterBullBarProductsDomFallback = function() {
+        if (typeof window.filterBullBarProducts === "function") {
+          try {
+            window.filterBullBarProducts();
+            return;
+          } catch (err) {
+            console.warn("Usando filtro DOM directo:", err);
+          }
+        }
+        var searchEl = document.getElementById("searchProductInput");
+        var q = normalizeStr(searchEl ? searchEl.value : "");
+        var tbody = document.getElementById("tableProductsBody");
+        if (!tbody) return;
+        var rows = tbody.querySelectorAll("tr");
+        rows.forEach(function(row) {
+          var text = normalizeStr(row.textContent || row.innerText || "");
+          row.style.display = (!q || text.indexOf(q) !== -1) ? "" : "none";
+        });
+      };
+
+      document.addEventListener("DOMContentLoaded", function() {
+        var sInput = document.getElementById("searchProductInput");
+        if (sInput) {
+          sInput.addEventListener("input", window.filterBullBarProductsDomFallback);
+          sInput.addEventListener("keyup", window.filterBullBarProductsDomFallback);
+        }
+
+        var cBtn = document.getElementById("closeProductModalBtn");
+        if (cBtn) {
+          cBtn.addEventListener("click", function(e) {
+            window.closeBullBarProductModal(e);
+          });
+        }
+
+        var cancelBtn = document.getElementById("btnCancelProduct");
+        if (cancelBtn) {
+          cancelBtn.addEventListener("click", function(e) {
+            window.closeBullBarProductModal(e);
+          });
+        }
+      });
+    })();
+  </script>
 </body>
 </html>

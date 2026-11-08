@@ -681,7 +681,7 @@ input:checked + .slider:before {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   z-index: 300;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   padding: 20px;
@@ -691,8 +691,9 @@ input:checked + .slider:before {
   overflow-y: auto;
 }
 .admin-modal-overlay.active {
-  opacity: 1;
-  pointer-events: auto;
+  display: flex !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
 
 .admin-modal-box {

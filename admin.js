@@ -4,6 +4,11 @@
  */
 
 document.addEventListener("DOMContentLoaded", () => {
+  const DEFAULT_ADMIN_AUTH = {
+    username: "admin",
+    password: "bullbar2026"
+  };
+
   // Inicializar Estado con LocalStorage o defaults de data.js
   let state = {
     products: loadProducts(),
@@ -118,19 +123,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnExportDataJs = document.getElementById("btnExportDataJs");
   const btnResetDefaults = document.getElementById("btnResetDefaults");
 
-  // Inicializar
-  initAdmin();
-
   function initAdmin() {
-    initAuthSystem();
-    setupNavigation();
-    populateCategoryDropdowns();
-    renderMetrics();
-    renderProductsTable();
-    renderCategoriesTable();
-    loadSettingsIntoForm();
-    initAnalyticsDashboard();
-    setupEventListeners();
+    try { initAuthSystem(); } catch (e) { console.error("Auth init error:", e); }
+    try { setupNavigation(); } catch (e) { console.error("Nav init error:", e); }
+    try { populateCategoryDropdowns(); } catch (e) { console.error("Categories dropdown error:", e); }
+    try { renderMetrics(); } catch (e) { console.error("Metrics error:", e); }
+    try { renderProductsTable(); } catch (e) { console.error("Products table error:", e); }
+    try { renderCategoriesTable(); } catch (e) { console.error("Categories table error:", e); }
+    try { loadSettingsIntoForm(); } catch (e) { console.error("Settings load error:", e); }
+    try { initAnalyticsDashboard(); } catch (e) { console.error("Analytics init error:", e); }
+    try { setupEventListeners(); } catch (e) { console.error("Event listeners error:", e); }
   }
 
   // --- CARGA Y PERSISTENCIA DE DATOS ---
@@ -144,7 +146,12 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function saveProducts() {
-    localStorage.setItem("bullbar_products", JSON.stringify(state.products));
+    try {
+      localStorage.setItem("bullbar_products", JSON.stringify(state.products));
+    } catch (e) {
+      console.warn("Advertencia de almacenamiento local:", e);
+      alert("La imagen es demasiado pesada para la memoria del navegador. Intenta con una foto más ligera o usa un enlace web.");
+    }
     renderMetrics();
   }
 
@@ -264,23 +271,45 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // --- TABLA DE PRODUCTOS ---
+  function normalizeSearchText(str) {
+    return (str || "")
+      .toString()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim();
+  }
+
   function renderProductsTable() {
+    if (!tableProductsBody) return;
     tableProductsBody.innerHTML = "";
+
+    // Sincronizar con los inputs actuales del DOM por seguridad
+    if (searchProductInput && typeof searchProductInput.value === "string") {
+      state.searchQuery = searchProductInput.value;
+    }
+    if (filterCategorySelect && filterCategorySelect.value) {
+      state.filterCategory = filterCategorySelect.value;
+    }
+    if (filterStatusSelect && filterStatusSelect.value) {
+      state.filterStatus = filterStatusSelect.value;
+    }
 
     let list = [...state.products];
 
-    // Filtro búsqueda
+    // Filtro búsqueda (insensible a mayúsculas y acentos)
     if (state.searchQuery.trim() !== "") {
-      const q = state.searchQuery.toLowerCase().trim();
-      list = list.filter(p => 
-        p.name.toLowerCase().includes(q) || 
-        (p.description && p.description.toLowerCase().includes(q)) ||
-        (p.categoryName && p.categoryName.toLowerCase().includes(q))
+      const q = normalizeSearchText(state.searchQuery);
+      list = list.filter(p =>
+        normalizeSearchText(p.name).includes(q) ||
+        normalizeSearchText(p.description).includes(q) ||
+        normalizeSearchText(p.categoryName).includes(q) ||
+        normalizeSearchText(p.badge).includes(q)
       );
     }
 
     // Filtro categoría
-    if (state.filterCategory !== "all") {
+    if (state.filterCategory && state.filterCategory !== "all") {
       list = list.filter(p => p.categoryId === state.filterCategory);
     }
 
@@ -386,6 +415,7 @@ document.addEventListener("DOMContentLoaded", () => {
       tableProductsBody.appendChild(tr);
     });
   }
+  window.filterBullBarProducts = renderProductsTable;
 
   // --- TABLA DE CATEGORÍAS ---
   function renderCategoriesTable() {
@@ -436,13 +466,19 @@ document.addEventListener("DOMContentLoaded", () => {
     productForm.reset();
 
     prodPreviewImg.src = "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&w=600&q=80";
+    prodPreviewImg.removeAttribute("data-uploaded");
+    if (prodFileInput) prodFileInput.value = "";
+    const statusEl = document.getElementById("uploadStatusMsg");
+    if (statusEl) statusEl.style.display = "none";
     prodAvailableSwitch.checked = true;
 
     const modalBody = productModal.querySelector(".modal-body");
     if (modalBody) modalBody.scrollTop = 0;
 
+    productModal.style.removeProperty("display");
     productModal.classList.add("active");
   }
+  window.openBullBarNewProductModal = openNewProductModal;
 
   function openEditProductModal(product) {
     state.currentEditingProduct = product;
@@ -455,18 +491,32 @@ document.addEventListener("DOMContentLoaded", () => {
     prodDescInput.value = product.description || "";
     prodImageUrlInput.value = product.image.startsWith("data:") ? "" : product.image;
     prodPreviewImg.src = product.image;
+    prodPreviewImg.removeAttribute("data-uploaded");
+    if (prodFileInput) prodFileInput.value = "";
+    const statusEl = document.getElementById("uploadStatusMsg");
+    if (statusEl) statusEl.style.display = "none";
     prodAvailableSwitch.checked = product.available;
 
     const modalBody = productModal.querySelector(".modal-body");
     if (modalBody) modalBody.scrollTop = 0;
 
+    productModal.style.removeProperty("display");
     productModal.classList.add("active");
   }
+  window.openBullBarEditProductModal = openEditProductModal;
 
-  function closeProductModal() {
-    productModal.classList.remove("active");
+  function closeProductModal(e) {
+    if (e) {
+      try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
+      try { if (e.stopPropagation) e.stopPropagation(); } catch(err) {}
+    }
+    if (productModal) {
+      productModal.classList.remove("active");
+      productModal.style.setProperty("display", "none", "important");
+    }
     state.currentEditingProduct = null;
   }
+  window.closeBullBarProductModal = closeProductModal;
 
   function duplicateProduct(product) {
     const newProd = {
@@ -491,8 +541,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Guardar formulario de producto
-  productForm.addEventListener("submit", (e) => {
-    e.preventDefault();
+  function handleProductFormSubmit(e) {
+    if (e && e.preventDefault) e.preventDefault();
 
     const name = prodNameInput.value.trim();
     const categoryId = prodCategorySelect.value;
@@ -501,12 +551,22 @@ document.addEventListener("DOMContentLoaded", () => {
     const price = parseFloat(prodPriceInput.value) || 0;
     const badge = prodBadgeInput.value.trim();
     const description = prodDescInput.value.trim();
-    const image = prodPreviewImg.src;
     const available = prodAvailableSwitch.checked;
+
+    // Determinar imagen final de forma segura (priorizando foto subida o enlace válido)
+    const rawUrlInput = prodImageUrlInput ? prodImageUrlInput.value.trim() : "";
+    let image = prodPreviewImg.src;
+    if (prodPreviewImg.getAttribute("data-uploaded") === "true" || image.startsWith("data:image/")) {
+      image = prodPreviewImg.src;
+    } else if (/^https?:\/\//i.test(rawUrlInput)) {
+      image = rawUrlInput;
+    } else if (state.currentEditingProduct && (!image || (!image.startsWith("http") && !image.startsWith("data:")))) {
+      image = state.currentEditingProduct.image;
+    }
 
     if (!name) {
       alert("Por favor ingresa el nombre del producto.");
-      return;
+      return false;
     }
 
     if (state.currentEditingProduct) {
@@ -541,31 +601,34 @@ document.addEventListener("DOMContentLoaded", () => {
     saveProducts();
     renderProductsTable();
     closeProductModal();
-  });
+    return false;
+  }
+  window.saveBullBarProductForm = handleProductFormSubmit;
+  if (productForm) productForm.addEventListener("submit", handleProductFormSubmit);
 
-  // Manejo de carga de imagen en el formulario
-  prodImageUrlInput.addEventListener("input", (e) => {
-    const url = e.target.value.trim();
-    if (url) prodPreviewImg.src = url;
-  });
+  // Manejo de carga de imagen en el formulario (respaldado por las funciones globales)
+  if (prodImageUrlInput) {
+    prodImageUrlInput.addEventListener("input", (e) => {
+      if (typeof window.handleBullBarImageUrl === "function") {
+        window.handleBullBarImageUrl(e);
+      }
+    });
+  }
 
-  prodFileInput.addEventListener("change", (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        prodPreviewImg.src = event.target.result;
-        prodImageUrlInput.value = ""; // Limpiar campo de URL externa
-      };
-      reader.readAsDataURL(file);
-    }
-  });
+  if (prodFileInput) {
+    prodFileInput.addEventListener("change", (e) => {
+      if (typeof window.handleBullBarImageFile === "function") {
+        window.handleBullBarImageFile(e);
+      }
+    });
+  }
 
   // --- MODAL DE CATEGORÍA (CREAR / EDITAR) ---
   function openNewCategoryModal() {
     state.currentEditingCategory = null;
     categoryModalTitle.textContent = "Agregar Nueva Categoría";
     categoryForm.reset();
+    categoryModal.style.removeProperty("display");
     categoryModal.classList.add("active");
   }
 
@@ -574,13 +637,22 @@ document.addEventListener("DOMContentLoaded", () => {
     categoryModalTitle.textContent = `Editar Categoría: ${cat.name}`;
     catNameInput.value = cat.name;
     catBadgeInput.value = cat.badge || "";
+    categoryModal.style.removeProperty("display");
     categoryModal.classList.add("active");
   }
 
-  function closeCategoryModal() {
-    categoryModal.classList.remove("active");
+  function closeCategoryModal(e) {
+    if (e) {
+      try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
+      try { if (e.stopPropagation) e.stopPropagation(); } catch(err) {}
+    }
+    if (categoryModal) {
+      categoryModal.classList.remove("active");
+      categoryModal.style.setProperty("display", "none", "important");
+    }
     state.currentEditingCategory = null;
   }
+  window.closeBullBarCategoryModal = closeCategoryModal;
 
   function deleteCategory(cat) {
     const count = state.products.filter(p => p.categoryId === cat.id).length;
@@ -740,35 +812,45 @@ const PRODUCTS = ${JSON.stringify(state.products, null, 2)};
   // --- LISTENERS GENERALES ---
   function setupEventListeners() {
     // Filtros de búsqueda en tabla
-    searchProductInput.addEventListener("input", (e) => {
-      state.searchQuery = e.target.value;
-      renderProductsTable();
-    });
+    if (searchProductInput) {
+      searchProductInput.addEventListener("input", (e) => {
+        state.searchQuery = e.target.value;
+        renderProductsTable();
+      });
+    }
 
-    filterCategorySelect.addEventListener("change", (e) => {
-      state.filterCategory = e.target.value;
-      renderProductsTable();
-    });
+    if (filterCategorySelect) {
+      filterCategorySelect.addEventListener("change", (e) => {
+        state.filterCategory = e.target.value;
+        renderProductsTable();
+      });
+    }
 
-    filterStatusSelect.addEventListener("change", (e) => {
-      state.filterStatus = e.target.value;
-      renderProductsTable();
-    });
+    if (filterStatusSelect) {
+      filterStatusSelect.addEventListener("change", (e) => {
+        state.filterStatus = e.target.value;
+        renderProductsTable();
+      });
+    }
 
     // Modales abrir/cerrar
-    btnNewProduct.addEventListener("click", openNewProductModal);
-    closeProductModalBtn.addEventListener("click", closeProductModal);
-    btnCancelProduct.addEventListener("click", closeProductModal);
-    productModal.addEventListener("click", (e) => {
-      if (e.target === productModal) closeProductModal();
-    });
+    if (btnNewProduct) btnNewProduct.addEventListener("click", openNewProductModal);
+    if (closeProductModalBtn) closeProductModalBtn.addEventListener("click", (e) => closeProductModal(e));
+    if (btnCancelProduct) btnCancelProduct.addEventListener("click", (e) => closeProductModal(e));
+    if (productModal) {
+      productModal.addEventListener("click", (e) => {
+        if (e.target === productModal) closeProductModal(e);
+      });
+    }
 
-    btnNewCategory.addEventListener("click", openNewCategoryModal);
-    closeCategoryModalBtn.addEventListener("click", closeCategoryModal);
-    btnCancelCategory.addEventListener("click", closeCategoryModal);
-    categoryModal.addEventListener("click", (e) => {
-      if (e.target === categoryModal) closeCategoryModal();
-    });
+    if (btnNewCategory) btnNewCategory.addEventListener("click", openNewCategoryModal);
+    if (closeCategoryModalBtn) closeCategoryModalBtn.addEventListener("click", (e) => closeCategoryModal(e));
+    if (btnCancelCategory) btnCancelCategory.addEventListener("click", (e) => closeCategoryModal(e));
+    if (categoryModal) {
+      categoryModal.addEventListener("click", (e) => {
+        if (e.target === categoryModal) closeCategoryModal(e);
+      });
+    }
 
     // Tecla Escape para modales
     document.addEventListener("keydown", (e) => {
@@ -1419,12 +1501,23 @@ const PRODUCTS = ${JSON.stringify(state.products, null, 2)};
       `;
     }
 
-    orderDetailModal.classList.add("active");
+    if (orderDetailModal) {
+      orderDetailModal.style.removeProperty("display");
+      orderDetailModal.classList.add("active");
+    }
   }
 
-  function closeOrderDetailModal() {
-    if (orderDetailModal) orderDetailModal.classList.remove("active");
+  function closeOrderDetailModal(e) {
+    if (e) {
+      try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
+      try { if (e.stopPropagation) e.stopPropagation(); } catch(err) {}
+    }
+    if (orderDetailModal) {
+      orderDetailModal.classList.remove("active");
+      orderDetailModal.style.setProperty("display", "none", "important");
+    }
   }
+  window.closeBullBarOrderModal = closeOrderDetailModal;
 
   function exportAnalyticsCsv() {
     const period = state.analyticsPeriod || "7days";
@@ -1580,11 +1673,6 @@ const PRODUCTS = ${JSON.stringify(state.products, null, 2)};
   // ==========================================================================
   // --- MÓDULO DE AUTENTICACIÓN & SEGURIDAD DEL PANEL ---
   // ==========================================================================
-
-  const DEFAULT_ADMIN_AUTH = {
-    username: "admin",
-    password: "bullbar2026"
-  };
 
   function getAuthCredentials() {
     try {
@@ -1894,5 +1982,16 @@ const PRODUCTS = ${JSON.stringify(state.products, null, 2)};
 
     // Botón de Actualizar Credenciales en Configuración
     if (btnUpdateCredentials) btnUpdateCredentials.addEventListener("click", updateCredentialsFromSettings);
+  }
+
+  // Inicializar todo el panel administrativo al final cuando todas las funciones y constantes están listas
+  initAdmin();
+
+  const verBadge = document.getElementById("appVersionBadge");
+  if (verBadge) {
+    verBadge.textContent = "v2.6 ✓ Actualizado";
+    verBadge.style.background = "rgba(37, 211, 102, 0.16)";
+    verBadge.style.color = "#4ade80";
+    verBadge.style.borderColor = "rgba(37, 211, 102, 0.45)";
   }
 });
