@@ -26,7 +26,34 @@ document.addEventListener("DOMContentLoaded", () => {
   function getProducts() {
     try {
       const saved = localStorage.getItem("bullbar_products");
-      return saved ? JSON.parse(saved) : (typeof PRODUCTS !== "undefined" ? PRODUCTS : []);
+      const rawList = saved ? JSON.parse(saved) : (typeof PRODUCTS !== "undefined" ? PRODUCTS : []);
+      if (!Array.isArray(rawList)) return [];
+      const result = [];
+      for (let i = 0; i < rawList.length; i++) {
+        const item = rawList[i];
+        if (!item || !item.name) continue;
+        const isAutoProdId = typeof item.id === "string" && item.id.indexOf("prod-") === 0;
+        const isExplicitCopy = item.name.indexOf("(Copia)") !== -1;
+        if (isAutoProdId && !isExplicitCopy) {
+          const otherMatch = rawList.find((other, idx) =>
+            idx !== i &&
+            other &&
+            other.name &&
+            other.name.trim().toLowerCase() === item.name.trim().toLowerCase() &&
+            other.categoryId === item.categoryId
+          );
+          if (otherMatch) {
+            otherMatch.price = item.price;
+            otherMatch.image = item.image;
+            otherMatch.description = item.description;
+            otherMatch.badge = item.badge;
+            otherMatch.available = item.available;
+            continue;
+          }
+        }
+        result.push(item);
+      }
+      return result;
     } catch (e) {
       return typeof PRODUCTS !== "undefined" ? PRODUCTS : [];
     }

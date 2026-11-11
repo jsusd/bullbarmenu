@@ -404,7 +404,7 @@
           <img src="https://assets.olaclick.app/companies/logos/46b22ae5-e7a7-48fb-89c7-b14f810a391b.png" alt="BullBar Logo">
         </div>
         <div>
-          <div class="sidebar-brand-title">BullBar <span style="font-size: 0.68rem; background: rgba(37, 211, 102, 0.18); color: #4ade80; border: 1px solid rgba(37, 211, 102, 0.4); padding: 2px 7px; border-radius: 99px; vertical-align: middle; margin-left: 4px;">v2.6</span></div>
+          <div class="sidebar-brand-title">BullBar <span style="font-size: 0.68rem; background: rgba(37, 211, 102, 0.18); color: #4ade80; border: 1px solid rgba(37, 211, 102, 0.4); padding: 2px 7px; border-radius: 99px; vertical-align: middle; margin-left: 4px;">v2.7</span></div>
           <div class="sidebar-brand-sub">Panel de Control</div>
         </div>
       </div>
@@ -497,7 +497,7 @@
             </svg>
           </button>
           <h1 id="topbarPageTitle" class="topbar-page-title">Productos del Menú</h1>
-          <span id="appVersionBadge" style="background: rgba(229, 185, 114, 0.16); color: #e5b972; border: 1px solid rgba(229, 185, 114, 0.45); padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; margin-left: 10px; letter-spacing: 0.03em;">Versión 2.6</span>
+          <span id="appVersionBadge" style="background: rgba(229, 185, 114, 0.16); color: #e5b972; border: 1px solid rgba(229, 185, 114, 0.45); padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; margin-left: 10px; letter-spacing: 0.03em;">Versión 2.7</span>
         </div>
 
         <div class="topbar-right">
@@ -1078,7 +1078,8 @@
         </button>
       </div>
 
-      <form id="productForm" novalidate onsubmit="if (window.saveBullBarProductForm) return window.saveBullBarProductForm(event);">
+      <form id="productForm" novalidate>
+        <input type="hidden" id="prodEditId" value="">
         <div class="modal-body">
           <div class="form-group-admin">
             <label for="prodName">Nombre del Producto / Trago *</label>
@@ -1151,7 +1152,7 @@
         </div>
 
         <div class="modal-foot" style="display: flex; align-items: center; justify-content: space-between;">
-          <span style="font-size: 0.72rem; color: #4ade80; font-weight: 700;">BullBar Admin v2.6</span>
+          <span style="font-size: 0.72rem; color: #4ade80; font-weight: 700;">BullBar Admin v2.7</span>
           <div style="display: flex; gap: 10px;">
             <button type="button" id="btnCancelProduct" onclick="window.closeBullBarProductModal(event);" class="btn-secondary">Cancelar</button>
             <button type="submit" class="btn-primary">Guardar Producto</button>
@@ -1225,8 +1226,8 @@
   <div id="adminToastContainer" class="admin-toast-container"></div>
 
   <!-- Scripts -->
-  <script src="data.js?v=20261108_v10"></script>
-  <script src="admin.js?v=20261108_v10"></script>
+  <script src="data.js?v=20261111_v11"></script>
+  <script src="admin.js?v=20261111_v11"></script>
   <script>
     // Respaldo directo en admin.html v2.6 para garantizar que buscador y botones de cerrar funcionen incluso con caché de navegador
     (function() {

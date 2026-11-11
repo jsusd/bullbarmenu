@@ -136,10 +136,52 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // --- CARGA Y PERSISTENCIA DE DATOS ---
+  function deduplicateProducts(list) {
+    if (!Array.isArray(list)) return [];
+    let changed = false;
+    // Si por el doble disparo anterior se creó un clon accidental con id "prod-..." que tiene el mismo nombre y categoría que otro producto existente (y no es "(Copia)"), fusionarlo y eliminar el duplicado
+    const result = [];
+    for (let i = 0; i < list.length; i++) {
+      const item = list[i];
+      if (!item || !item.name) continue;
+      const isAutoProdId = typeof item.id === "string" && item.id.indexOf("prod-") === 0;
+      const isExplicitCopy = item.name.indexOf("(Copia)") !== -1;
+
+      if (isAutoProdId && !isExplicitCopy) {
+        // Buscar si existe otro producto en la lista con el mismo nombre y categoría
+        const otherMatch = list.find((other, idx) =>
+          idx !== i &&
+          other &&
+          other.name &&
+          other.name.trim().toLowerCase() === item.name.trim().toLowerCase() &&
+          other.categoryId === item.categoryId
+        );
+        if (otherMatch) {
+          // Conservar los datos más recientes en el producto original y omitir el clon accidental
+          otherMatch.price = item.price;
+          otherMatch.image = item.image;
+          otherMatch.description = item.description;
+          otherMatch.badge = item.badge;
+          otherMatch.available = item.available;
+          changed = true;
+          continue;
+        }
+      }
+      result.push(item);
+    }
+    if (changed) {
+      try {
+        localStorage.setItem("bullbar_products", JSON.stringify(result));
+      } catch (e) {}
+    }
+    return result;
+  }
+
   function loadProducts() {
     try {
       const saved = localStorage.getItem("bullbar_products");
-      return saved ? JSON.parse(saved) : (typeof PRODUCTS !== "undefined" ? PRODUCTS : []);
+      const rawList = saved ? JSON.parse(saved) : (typeof PRODUCTS !== "undefined" ? PRODUCTS : []);
+      return deduplicateProducts(rawList);
     } catch (e) {
       return typeof PRODUCTS !== "undefined" ? PRODUCTS : [];
     }
@@ -460,10 +502,15 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // --- MODAL DE PRODUCTO (CREAR / EDITAR) ---
+  let isSubmittingProduct = false;
+
   function openNewProductModal() {
     state.currentEditingProduct = null;
     productModalTitle.textContent = "Agregar Nuevo Producto";
     productForm.reset();
+    productForm.removeAttribute("data-editing-id");
+    const editIdInput = document.getElementById("prodEditId");
+    if (editIdInput) editIdInput.value = "";
 
     prodPreviewImg.src = "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&w=600&q=80";
     prodPreviewImg.removeAttribute("data-uploaded");
@@ -483,6 +530,9 @@ document.addEventListener("DOMContentLoaded", () => {
   function openEditProductModal(product) {
     state.currentEditingProduct = product;
     productModalTitle.textContent = `Editar: ${product.name}`;
+    productForm.setAttribute("data-editing-id", product.id);
+    const editIdInput = document.getElementById("prodEditId");
+    if (editIdInput) editIdInput.value = product.id;
 
     prodNameInput.value = product.name;
     prodCategorySelect.value = product.categoryId;
@@ -515,6 +565,9 @@ document.addEventListener("DOMContentLoaded", () => {
       productModal.style.setProperty("display", "none", "important");
     }
     state.currentEditingProduct = null;
+    if (productForm) productForm.removeAttribute("data-editing-id");
+    const editIdInput = document.getElementById("prodEditId");
+    if (editIdInput) editIdInput.value = "";
   }
   window.closeBullBarProductModal = closeProductModal;
 
@@ -540,67 +593,94 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Guardar formulario de producto
+  // Guardar formulario de producto (protegido contra doble ejecución)
   function handleProductFormSubmit(e) {
-    if (e && e.preventDefault) e.preventDefault();
-
-    const name = prodNameInput.value.trim();
-    const categoryId = prodCategorySelect.value;
-    const categoryObj = state.categories.find(c => c.id === categoryId);
-    const categoryName = categoryObj ? categoryObj.name.toUpperCase() : "GENERAL";
-    const price = parseFloat(prodPriceInput.value) || 0;
-    const badge = prodBadgeInput.value.trim();
-    const description = prodDescInput.value.trim();
-    const available = prodAvailableSwitch.checked;
-
-    // Determinar imagen final de forma segura (priorizando foto subida o enlace válido)
-    const rawUrlInput = prodImageUrlInput ? prodImageUrlInput.value.trim() : "";
-    let image = prodPreviewImg.src;
-    if (prodPreviewImg.getAttribute("data-uploaded") === "true" || image.startsWith("data:image/")) {
-      image = prodPreviewImg.src;
-    } else if (/^https?:\/\//i.test(rawUrlInput)) {
-      image = rawUrlInput;
-    } else if (state.currentEditingProduct && (!image || (!image.startsWith("http") && !image.startsWith("data:")))) {
-      image = state.currentEditingProduct.image;
+    if (e) {
+      if (e.preventDefault) e.preventDefault();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      if (e._bullbarHandled) return false;
+      e._bullbarHandled = true;
     }
 
+    if (isSubmittingProduct) return false;
+    if (productModal && !productModal.classList.contains("active")) return false;
+
+    const name = prodNameInput.value.trim();
     if (!name) {
       alert("Por favor ingresa el nombre del producto.");
       return false;
     }
 
-    if (state.currentEditingProduct) {
-      // Editar existente
-      state.currentEditingProduct.name = name;
-      state.currentEditingProduct.categoryId = categoryId;
-      state.currentEditingProduct.categoryName = categoryName;
-      state.currentEditingProduct.price = price;
-      state.currentEditingProduct.badge = badge;
-      state.currentEditingProduct.description = description;
-      state.currentEditingProduct.image = image;
-      state.currentEditingProduct.available = available;
+    isSubmittingProduct = true;
+    try {
+      const categoryId = prodCategorySelect.value;
+      const categoryObj = state.categories.find(c => c.id === categoryId);
+      const categoryName = categoryObj ? categoryObj.name.toUpperCase() : "GENERAL";
+      const price = parseFloat(prodPriceInput.value) || 0;
+      const badge = prodBadgeInput.value.trim();
+      const description = prodDescInput.value.trim();
+      const available = prodAvailableSwitch.checked;
 
-      showToast(`¡"${name}" actualizado exitosamente!`);
-    } else {
-      // Crear nuevo
-      const newProduct = {
-        id: "prod-" + Date.now(),
-        categoryId,
-        categoryName,
-        name,
-        description,
-        price,
-        image,
-        badge,
-        available
-      };
-      state.products.unshift(newProduct);
-      showToast(`¡"${name}" agregado al menú!`);
+      // Identificar de forma infalible si estamos editando un producto existente
+      const editIdInput = document.getElementById("prodEditId");
+      const editingId =
+        (state.currentEditingProduct && state.currentEditingProduct.id) ||
+        (editIdInput && editIdInput.value) ||
+        (productForm && productForm.getAttribute("data-editing-id")) ||
+        "";
+
+      const targetProduct = editingId
+        ? (state.products.find(p => String(p.id) === String(editingId)) || state.currentEditingProduct)
+        : state.currentEditingProduct;
+
+      // Determinar imagen final de forma segura (priorizando foto subida o enlace válido)
+      const rawUrlInput = prodImageUrlInput ? prodImageUrlInput.value.trim() : "";
+      let image = prodPreviewImg.src;
+      if (prodPreviewImg.getAttribute("data-uploaded") === "true" || image.startsWith("data:image/")) {
+        image = prodPreviewImg.src;
+      } else if (/^https?:\/\//i.test(rawUrlInput)) {
+        image = rawUrlInput;
+      } else if (targetProduct && (!image || (!image.startsWith("http") && !image.startsWith("data:")))) {
+        image = targetProduct.image;
+      }
+
+      if (targetProduct) {
+        // Editar existente en su misma posición (sin duplicar jamás)
+        targetProduct.name = name;
+        targetProduct.categoryId = categoryId;
+        targetProduct.categoryName = categoryName;
+        targetProduct.price = price;
+        targetProduct.badge = badge;
+        targetProduct.description = description;
+        targetProduct.image = image;
+        targetProduct.available = available;
+
+        showToast(`¡"${name}" actualizado exitosamente!`);
+      } else {
+        // Crear nuevo
+        const newProduct = {
+          id: "prod-" + Date.now(),
+          categoryId,
+          categoryName,
+          name,
+          description,
+          price,
+          image,
+          badge,
+          available
+        };
+        state.products.unshift(newProduct);
+        showToast(`¡"${name}" agregado al menú!`);
+      }
+
+      saveProducts();
+      renderProductsTable();
+      closeProductModal();
+    } finally {
+      setTimeout(() => {
+        isSubmittingProduct = false;
+      }, 250);
     }
-
-    saveProducts();
-    renderProductsTable();
-    closeProductModal();
     return false;
   }
   window.saveBullBarProductForm = handleProductFormSubmit;
@@ -1989,7 +2069,7 @@ const PRODUCTS = ${JSON.stringify(state.products, null, 2)};
 
   const verBadge = document.getElementById("appVersionBadge");
   if (verBadge) {
-    verBadge.textContent = "v2.6 ✓ Actualizado";
+    verBadge.textContent = "v2.7 ✓ Actualizado";
     verBadge.style.background = "rgba(37, 211, 102, 0.16)";
     verBadge.style.color = "#4ade80";
     verBadge.style.borderColor = "rgba(37, 211, 102, 0.45)";
