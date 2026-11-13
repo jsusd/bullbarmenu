@@ -23,37 +23,50 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function cleanDuplicateProducts(rawList) {
+    if (!Array.isArray(rawList)) return [];
+    const result = [];
+    for (let i = 0; i < rawList.length; i++) {
+      const item = rawList[i];
+      if (!item || !item.name) continue;
+      const isAutoProdId = typeof item.id === "string" && item.id.indexOf("prod-") === 0;
+      const isExplicitCopy = item.name.indexOf("(Copia)") !== -1;
+      if (isAutoProdId && !isExplicitCopy) {
+        const otherMatch = rawList.find((other, idx) =>
+          idx !== i &&
+          other &&
+          other.name &&
+          other.name.trim().toLowerCase() === item.name.trim().toLowerCase() &&
+          other.categoryId === item.categoryId
+        );
+        if (otherMatch) {
+          otherMatch.price = item.price;
+          otherMatch.image = item.image;
+          otherMatch.description = item.description;
+          otherMatch.badge = item.badge;
+          otherMatch.available = item.available;
+          continue;
+        }
+      }
+      result.push(item);
+    }
+    return result;
+  }
+
   function getProducts() {
     try {
+      const fileTs = typeof BULLBAR_UPDATED_AT !== "undefined" ? Number(BULLBAR_UPDATED_AT) : 0;
+      const localTs = Number(localStorage.getItem("bullbar_updated_at") || 0);
+      if (fileTs > localTs && typeof PRODUCTS !== "undefined") {
+        localStorage.setItem("bullbar_products", JSON.stringify(PRODUCTS));
+        if (typeof CATEGORIES !== "undefined") localStorage.setItem("bullbar_categories", JSON.stringify(CATEGORIES));
+        if (typeof BULLBAR_CONFIG !== "undefined") localStorage.setItem("bullbar_config", JSON.stringify(BULLBAR_CONFIG));
+        localStorage.setItem("bullbar_updated_at", String(fileTs));
+        return cleanDuplicateProducts(PRODUCTS);
+      }
       const saved = localStorage.getItem("bullbar_products");
       const rawList = saved ? JSON.parse(saved) : (typeof PRODUCTS !== "undefined" ? PRODUCTS : []);
-      if (!Array.isArray(rawList)) return [];
-      const result = [];
-      for (let i = 0; i < rawList.length; i++) {
-        const item = rawList[i];
-        if (!item || !item.name) continue;
-        const isAutoProdId = typeof item.id === "string" && item.id.indexOf("prod-") === 0;
-        const isExplicitCopy = item.name.indexOf("(Copia)") !== -1;
-        if (isAutoProdId && !isExplicitCopy) {
-          const otherMatch = rawList.find((other, idx) =>
-            idx !== i &&
-            other &&
-            other.name &&
-            other.name.trim().toLowerCase() === item.name.trim().toLowerCase() &&
-            other.categoryId === item.categoryId
-          );
-          if (otherMatch) {
-            otherMatch.price = item.price;
-            otherMatch.image = item.image;
-            otherMatch.description = item.description;
-            otherMatch.badge = item.badge;
-            otherMatch.available = item.available;
-            continue;
-          }
-        }
-        result.push(item);
-      }
-      return result;
+      return cleanDuplicateProducts(rawList);
     } catch (e) {
       return typeof PRODUCTS !== "undefined" ? PRODUCTS : [];
     }
@@ -185,6 +198,58 @@ document.addEventListener("DOMContentLoaded", () => {
     updateCartUI();
     checkBusinessHours();
     setupEventListeners();
+    syncLiveCatalogFromCloud();
+
+    // Actualizar en tiempo real para todos los clientes cuando vuelven a la pestaña o cada 20 segundos
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        syncLiveCatalogFromCloud();
+      }
+    });
+    setInterval(syncLiveCatalogFromCloud, 20000);
+  }
+
+  let lastAppliedCloudTs = Number(localStorage.getItem("bullbar_updated_at") || 0);
+
+  async function syncLiveCatalogFromCloud() {
+    try {
+      const res = await fetch("/.netlify/functions/menu?t=" + Date.now(), { cache: "no-store" });
+      if (!res.ok) return;
+      const json = await res.json();
+      if (!json || !json.ok || json.empty || !json.data) return;
+
+      const cloudData = json.data;
+      const cloudTs = Number(cloudData.updatedAt || 0);
+
+      if (Array.isArray(cloudData.products) && cloudData.products.length > 0 && cloudTs >= lastAppliedCloudTs) {
+        const hadNewChanges = cloudTs > lastAppliedCloudTs || state.products.length !== cloudData.products.length;
+        lastAppliedCloudTs = cloudTs;
+
+        state.products = cleanDuplicateProducts(cloudData.products);
+        if (Array.isArray(cloudData.categories) && cloudData.categories.length > 0) {
+          state.categories = cloudData.categories;
+        }
+        if (cloudData.config && typeof cloudData.config === "object") {
+          state.config = cloudData.config;
+        }
+
+        try {
+          localStorage.setItem("bullbar_products", JSON.stringify(state.products));
+          localStorage.setItem("bullbar_categories", JSON.stringify(state.categories));
+          localStorage.setItem("bullbar_config", JSON.stringify(state.config));
+          localStorage.setItem("bullbar_updated_at", String(cloudTs));
+        } catch (e) {}
+
+        if (hadNewChanges) {
+          renderBrandInfo();
+          renderCategories();
+          renderProducts();
+          checkBusinessHours();
+        }
+      }
+    } catch (e) {
+      // Modo local sin función serverless activa
+    }
   }
 
   // Cargar datos de la marca en el encabezado

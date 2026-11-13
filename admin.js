@@ -133,6 +133,98 @@ document.addEventListener("DOMContentLoaded", () => {
     try { loadSettingsIntoForm(); } catch (e) { console.error("Settings load error:", e); }
     try { initAnalyticsDashboard(); } catch (e) { console.error("Analytics init error:", e); }
     try { setupEventListeners(); } catch (e) { console.error("Event listeners error:", e); }
+    try { syncFromCloud(); } catch (e) { console.error("Cloud sync init error:", e); }
+  }
+
+  // --- SINCRONIZACIÓN EN LA NUBE EN TIEMPO REAL (PARA TODOS LOS CLIENTES Y DISPOSITIVOS) ---
+  function setCloudBadgeStatus(text, color = "#4ade80") {
+    const verBadge = document.getElementById("appVersionBadge");
+    if (verBadge) {
+      verBadge.textContent = text;
+      verBadge.style.color = color;
+    }
+  }
+
+  async function syncToCloud() {
+    const updatedAt = Date.now();
+    try {
+      localStorage.setItem("bullbar_updated_at", String(updatedAt));
+    } catch (e) {}
+
+    setCloudBadgeStatus("v2.8 ⏳ Publicando...", "#e5b972");
+    try {
+      const res = await fetch("/.netlify/functions/menu", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          products: state.products,
+          categories: state.categories,
+          config: state.config,
+          updatedAt
+        })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.ok) {
+          setCloudBadgeStatus("v2.8 ☁️ En Vivo (Todos los clientes)", "#4ade80");
+          return true;
+        }
+      }
+      setCloudBadgeStatus("v2.8 ✓ Guardado Local", "#4ade80");
+    } catch (err) {
+      setCloudBadgeStatus("v2.8 ✓ Guardado Local", "#4ade80");
+    }
+    return false;
+  }
+
+  async function syncFromCloud() {
+    try {
+      const res = await fetch("/.netlify/functions/menu?t=" + Date.now(), { cache: "no-store" });
+      if (!res.ok) return;
+      const json = await res.json();
+      if (!json || !json.ok) return;
+
+      if (json.empty) {
+        // Inicializar la nube por primera vez con el catálogo actual
+        await syncToCloud();
+        return;
+      }
+
+      const cloudData = json.data;
+      const localUpdatedAt = Number(localStorage.getItem("bullbar_updated_at") || 0);
+      const cloudUpdatedAt = Number((cloudData && cloudData.updatedAt) || 0);
+
+      // Si la nube tiene datos más recientes (o este dispositivo no tenía cambios recientes), sincronizar desde la nube
+      if (cloudData && Array.isArray(cloudData.products) && cloudData.products.length > 0) {
+        if (cloudUpdatedAt >= localUpdatedAt) {
+          state.products = deduplicateProducts(cloudData.products);
+          if (Array.isArray(cloudData.categories) && cloudData.categories.length > 0) {
+            state.categories = cloudData.categories;
+          }
+          if (cloudData.config && typeof cloudData.config === "object") {
+            state.config = cloudData.config;
+          }
+          try {
+            localStorage.setItem("bullbar_products", JSON.stringify(state.products));
+            localStorage.setItem("bullbar_categories", JSON.stringify(state.categories));
+            localStorage.setItem("bullbar_config", JSON.stringify(state.config));
+            localStorage.setItem("bullbar_updated_at", String(cloudUpdatedAt));
+          } catch (e) {}
+
+          populateCategoryDropdowns();
+          renderMetrics();
+          renderProductsTable();
+          renderCategoriesTable();
+          loadSettingsIntoForm();
+          setCloudBadgeStatus("v2.8 ☁️ En Vivo (Sincronizado)", "#4ade80");
+        } else {
+          // Este dispositivo tiene cambios más recientes: subirlos a la nube
+          await syncToCloud();
+        }
+      }
+    } catch (e) {
+      // Modo local o función aún no desplegada
+    }
   }
 
   // --- CARGA Y PERSISTENCIA DE DATOS ---
@@ -179,6 +271,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function loadProducts() {
     try {
+      const fileTs = typeof BULLBAR_UPDATED_AT !== "undefined" ? Number(BULLBAR_UPDATED_AT) : 0;
+      const localTs = Number(localStorage.getItem("bullbar_updated_at") || 0);
+      if (fileTs > localTs && typeof PRODUCTS !== "undefined") {
+        localStorage.setItem("bullbar_products", JSON.stringify(PRODUCTS));
+        if (typeof CATEGORIES !== "undefined") localStorage.setItem("bullbar_categories", JSON.stringify(CATEGORIES));
+        if (typeof BULLBAR_CONFIG !== "undefined") localStorage.setItem("bullbar_config", JSON.stringify(BULLBAR_CONFIG));
+        localStorage.setItem("bullbar_updated_at", String(fileTs));
+        return deduplicateProducts(PRODUCTS);
+      }
       const saved = localStorage.getItem("bullbar_products");
       const rawList = saved ? JSON.parse(saved) : (typeof PRODUCTS !== "undefined" ? PRODUCTS : []);
       return deduplicateProducts(rawList);
@@ -190,11 +291,13 @@ document.addEventListener("DOMContentLoaded", () => {
   function saveProducts() {
     try {
       localStorage.setItem("bullbar_products", JSON.stringify(state.products));
+      localStorage.setItem("bullbar_updated_at", String(Date.now()));
     } catch (e) {
       console.warn("Advertencia de almacenamiento local:", e);
       alert("La imagen es demasiado pesada para la memoria del navegador. Intenta con una foto más ligera o usa un enlace web.");
     }
     renderMetrics();
+    syncToCloud();
   }
 
   function loadCategories() {
@@ -208,8 +311,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function saveCategories() {
     localStorage.setItem("bullbar_categories", JSON.stringify(state.categories));
+    localStorage.setItem("bullbar_updated_at", String(Date.now()));
     populateCategoryDropdowns();
     renderMetrics();
+    syncToCloud();
   }
 
   function loadConfig() {
@@ -223,7 +328,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function saveConfig() {
     localStorage.setItem("bullbar_config", JSON.stringify(state.config));
+    localStorage.setItem("bullbar_updated_at", String(Date.now()));
     updateBarStatusUI();
+    syncToCloud();
   }
 
   // --- NAVEGACIÓN DE SECCIONES ---
@@ -829,6 +936,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function exportUpdatedDataJs() {
     const codeContent = `// Catálogo oficial y Configuración de BullBar Social Lounge
 // Generado automáticamente desde el Panel Administrativo BullBar
+const BULLBAR_UPDATED_AT = ${Date.now()};
 
 const BULLBAR_CONFIG = ${JSON.stringify(state.config, null, 2)};
 
@@ -866,6 +974,7 @@ const PRODUCTS = ${JSON.stringify(state.products, null, 2)};
       renderProductsTable();
       renderCategoriesTable();
       loadSettingsIntoForm();
+      syncToCloud();
       showToast("Datos restaurados a los valores originales.");
     }
   });
@@ -2069,7 +2178,7 @@ const PRODUCTS = ${JSON.stringify(state.products, null, 2)};
 
   const verBadge = document.getElementById("appVersionBadge");
   if (verBadge) {
-    verBadge.textContent = "v2.7 ✓ Actualizado";
+    verBadge.textContent = "v2.8 ✓ Actualizado";
     verBadge.style.background = "rgba(37, 211, 102, 0.16)";
     verBadge.style.color = "#4ade80";
     verBadge.style.borderColor = "rgba(37, 211, 102, 0.45)";
